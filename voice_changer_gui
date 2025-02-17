@@ -7,6 +7,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import json
 import os
+from elevenlabs import voices
 
 class VoiceChangerGUI:
     def __init__(self, root):
@@ -93,4 +94,79 @@ class VoiceChangerGUI:
         self.save_config()
         self.status_label.config(text="Status: Settings saved")
         
-    # ... rest of the existing methods ...
+    def setup_audio_monitor(self):
+        """Setup audio level monitoring"""
+        self.fig, self.ax = plt.subplots(figsize=(4, 1))
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
+        self.canvas.get_tk_widget().grid(row=1, column=0)
+        
+        self.line, = self.ax.plot(np.zeros(100))
+        self.ax.set_ylim(-1, 1)
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+        self.ax.set_title("Audio Level")
+        
+    def update_audio_monitor(self, audio_data):
+        """Update the audio level visualization"""
+        self.line.set_ydata(audio_data)
+        self.canvas.draw()
+        
+    def start_voice_changer(self):
+        api_key = self.api_key.get()
+        voice_selection = self.voice_var.get()
+        
+        if not api_key or not voice_selection:
+            self.status_label.config(text="Status: Missing API Key or Voice selection")
+            return
+        
+        # Extract voice ID from selection
+        voice_id = voice_selection.split('(')[-1].strip(')')
+        
+        self.voice_changer = VoiceChanger(voice_id=voice_id, api_key=api_key)
+        
+        # Start voice changer in a separate thread
+        self.voice_thread = threading.Thread(target=self.voice_changer.run)
+        self.voice_thread.start()
+        
+        self.start_button.config(state=tk.DISABLED)
+        self.stop_button.config(state=tk.NORMAL)
+        self.status_label.config(text="Status: Running")
+        
+    def stop_voice_changer(self):
+        if self.voice_changer:
+            self.voice_changer.stop_recording()
+            self.voice_thread.join()
+            self.voice_changer = None
+            
+        self.start_button.config(state=tk.NORMAL)
+        self.stop_button.config(state=tk.DISABLED)
+        self.status_label.config(text="Status: Stopped")
+
+    def setup_voice_selection(self, frame):
+        """Setup voice selection dropdown"""
+        ttk.Label(frame, text="Voice:").grid(row=1, column=0, padx=5, pady=5)
+        
+        # Get available voices
+        try:
+            self.available_voices = voices()
+            voice_names = [f"{v.name} ({v.voice_id})" for v in self.available_voices]
+        except Exception as e:
+            print(f"Error fetching voices: {e}")
+            voice_names = []
+        
+        self.voice_var = tk.StringVar()
+        self.voice_dropdown = ttk.Combobox(frame, textvariable=self.voice_var, 
+                                         values=voice_names, width=37)
+        self.voice_dropdown.grid(row=1, column=1, padx=5, pady=5)
+        
+        # Set saved voice if available
+        if self.config.get('voice_id'):
+            for voice in voice_names:
+                if self.config['voice_id'] in voice:
+                    self.voice_dropdown.set(voice)
+                    break
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = VoiceChangerGUI(root)
+    root.mainloop() 
