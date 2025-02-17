@@ -1,0 +1,90 @@
+import tkinter as tk
+from tkinter import ttk
+from voice_changer import VoiceChanger
+import threading
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+
+class VoiceChangerGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Voice Changer")
+        self.voice_changer = None
+        self.setup_ui()
+        self.setup_audio_monitor()
+        
+    def setup_ui(self):
+        frame = ttk.Frame(self.root, padding="10")
+        frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # ElevenLabs API Key
+        ttk.Label(frame, text="ElevenLabs API Key:").grid(row=0, column=0, padx=5, pady=5)
+        self.api_key = ttk.Entry(frame, width=40)
+        self.api_key.grid(row=0, column=1, padx=5, pady=5)
+        
+        # Voice ID selection
+        ttk.Label(frame, text="Voice ID:").grid(row=1, column=0, padx=5, pady=5)
+        self.voice_id = ttk.Entry(frame, width=40)
+        self.voice_id.grid(row=1, column=1, padx=5, pady=5)
+        
+        # Control buttons
+        self.start_button = ttk.Button(frame, text="Start", command=self.start_voice_changer)
+        self.start_button.grid(row=2, column=0, padx=5, pady=10)
+        
+        self.stop_button = ttk.Button(frame, text="Stop", command=self.stop_voice_changer, state=tk.DISABLED)
+        self.stop_button.grid(row=2, column=1, padx=5, pady=10)
+        
+        # Status indicator
+        self.status_label = ttk.Label(frame, text="Status: Stopped")
+        self.status_label.grid(row=3, column=0, columnspan=2, pady=5)
+        
+    def setup_audio_monitor(self):
+        """Setup audio level monitoring"""
+        self.fig, self.ax = plt.subplots(figsize=(4, 1))
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
+        self.canvas.get_tk_widget().grid(row=1, column=0)
+        
+        self.line, = self.ax.plot(np.zeros(100))
+        self.ax.set_ylim(-1, 1)
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+        self.ax.set_title("Audio Level")
+        
+    def update_audio_monitor(self, audio_data):
+        """Update the audio level visualization"""
+        self.line.set_ydata(audio_data)
+        self.canvas.draw()
+        
+    def start_voice_changer(self):
+        api_key = self.api_key.get()
+        voice_id = self.voice_id.get()
+        
+        if not api_key or not voice_id:
+            self.status_label.config(text="Status: Missing API Key or Voice ID")
+            return
+        
+        self.voice_changer = VoiceChanger(voice_id=voice_id, api_key=api_key)
+        
+        # Start voice changer in a separate thread
+        self.voice_thread = threading.Thread(target=self.voice_changer.run)
+        self.voice_thread.start()
+        
+        self.start_button.config(state=tk.DISABLED)
+        self.stop_button.config(state=tk.NORMAL)
+        self.status_label.config(text="Status: Running")
+        
+    def stop_voice_changer(self):
+        if self.voice_changer:
+            self.voice_changer.stop_recording()
+            self.voice_thread.join()
+            self.voice_changer = None
+            
+        self.start_button.config(state=tk.NORMAL)
+        self.stop_button.config(state=tk.DISABLED)
+        self.status_label.config(text="Status: Stopped")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = VoiceChangerGUI(root)
+    root.mainloop()
